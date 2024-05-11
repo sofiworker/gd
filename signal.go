@@ -1,11 +1,3 @@
-//go:build !windows
-// +build !windows
-
-/**
- * Copyright 2018 gd Author. All Rights Reserved.
- * Author: Chuck1024
- */
-
 package gd
 
 import (
@@ -14,32 +6,20 @@ import (
 	"syscall"
 )
 
-var (
-	shutdown = make(chan os.Signal)
-	running  = make(chan bool)
-	hup      = make(chan os.Signal)
-)
-
-func init() {
-	signal.Notify(shutdown, syscall.SIGINT, os.Interrupt, os.Kill, syscall.SIGTERM, syscall.SIGQUIT, syscall.SIGUSR2)
-	signal.Notify(hup, syscall.SIGHUP)
+// ShutDownSignals returns all the signals that are being watched for to shut down services.
+func ShutDownSignals() []os.Signal {
+	return []os.Signal{
+		syscall.SIGTERM, syscall.SIGINT, syscall.SIGQUIT, syscall.SIGKILL,
+	}
 }
 
-func (e *Engine) Signal() {
-	go func() {
-		for {
-			select {
-			case sig := <-shutdown:
-				Info("receive signal: %v, to stop server...", sig)
-				running <- false
-			case <-hup:
-			}
+func ListenShutDownSignals(signals ...os.Signal) {
+	ch := make(chan os.Signal)
+	signal.Notify(ch, signals...)
+	for {
+		select {
+		case <-ch:
+			os.Exit(0)
 		}
-	}()
-	Info("register signal ok")
-}
-
-func Close() {
-	<-running
-	close(running)
+	}
 }
