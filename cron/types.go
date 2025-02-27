@@ -1,49 +1,11 @@
 package cron
 
-import (
-	"fmt"
-	"time"
+type Job struct {
+}
 
-	"github.com/go-co-op/gocron/v2"
-)
-
-func test() {
-	// create a scheduler
-	s, err := gocron.NewScheduler()
-	if err != nil {
-		// handle error
-	}
-
-	// add a job to the scheduler
-	j, err := s.NewJob(
-		gocron.DurationJob(
-			10*time.Second,
-		),
-		gocron.NewTask(
-			func(a string, b int) {
-				// do things
-			},
-			"hello",
-			1,
-		),
-	)
-	if err != nil {
-		// handle error
-	}
-	// each job has a unique id
-	fmt.Println(j.ID())
-
-	// start the scheduler
-	s.Start()
-
-	// block until you are ready to shut down
-	select {
-	case <-time.After(time.Minute):
-	}
-
-	// when you're done, shut it down
-	err = s.Shutdown()
-	if err != nil {
-		// handle error
-	}
+type Cron interface {
+	AddJob(t *Job) (string, error)
+	DelJob(id string) error
+	StopJob(id string) error
+	Start() error
 }

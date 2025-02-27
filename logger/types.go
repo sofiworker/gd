@@ -34,7 +34,7 @@ type Encode interface {
 }
 
 type Option struct {
-	MoudleName   string
+	ModuleName   string
 	OutPath      string
 	MaxSize      int64
 	MaxRetainDay int

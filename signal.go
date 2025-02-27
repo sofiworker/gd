@@ -13,13 +13,24 @@ func ShutDownSignals() []os.Signal {
 	}
 }
 
-func ListenShutDownSignals(signals ...os.Signal) {
+func ListenShutDownSignals(f func(sig os.Signal)) {
+	ch := make(chan os.Signal)
+	signal.Notify(ch, ShutDownSignals()...)
+	for {
+		select {
+		case sig := <-ch:
+			f(sig)
+		}
+	}
+}
+
+func ListenSignalsWithHook(f func(sig os.Signal), signals ...os.Signal) {
 	ch := make(chan os.Signal)
 	signal.Notify(ch, signals...)
 	for {
 		select {
-		case <-ch:
-			os.Exit(0)
+		case sig := <-ch:
+			f(sig)
 		}
 	}
 }

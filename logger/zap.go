@@ -1,9 +1,9 @@
 package logger
 
 import (
-
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"os"
 )
 
 type ZapLogger struct {
@@ -24,7 +24,6 @@ type ZapLogger struct {
 // 	sugar.Infof("Failed to fetch URL: %s", "url")
 // }
 
-
 func (z *ZapLogger) New() (Logger, error) {
 	encoderCfg := zapcore.EncoderConfig{
 		MessageKey:     "msg",
@@ -44,7 +43,6 @@ func (z *ZapLogger) New() (Logger, error) {
 	}
 	return ll, nil
 }
-
 
 func (z *ZapLogger) Info(args ...interface{}) {
 	z.sugar.Info(args...)
@@ -97,7 +95,6 @@ func (z *ZapLogger) Fatalf(msg string, args ...interface{}) {
 func (z *ZapLogger) Sync() error {
 	return z.sugar.Sync()
 }
-
 
 func (z *ZapLogger) Close() error {
 	return z.sugar.Sync()

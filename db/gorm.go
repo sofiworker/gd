@@ -2,43 +2,38 @@ package db
 
 import "gorm.io/gorm"
 
-type GormDB struct {
+type GormClient struct {
 	DB *gorm.DB
 }
 
-func (g *GormDB) Migrate(source string) error {
-	err := g.Open(source)
-	if err != nil {
-		return err
-	}
+func NewGormClient() *GormClient {
+	return &GormClient{}
+}
+
+func (g *GormClient) Migrate(source string) error {
+	//err := g.Open(source)
+	//if err != nil {
+	//	return err
+	//}
 	return nil
 }
 
-func (g *GormDB) Open(source string) error {
-	db, err := gorm.Open(nil, &gorm.Config{})
-	if err != nil {
-		return err
-	}
-	g.DB = db
-	return nil
-}
-
-func (g *GormDB) Close() error {
+func (g *GormClient) Close() error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (g *GormDB) Backend() {
+func (g *GormClient) Backend() {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (g *GormDB) Tx() error {
+func (g *GormClient) Tx() error {
 	//TODO implement me
 	panic("implement me")
 }
 
-func (g *GormDB) Commit() error {
+func (g *GormClient) Commit() error {
 	//TODO implement me
 	panic("implement me")
 }
