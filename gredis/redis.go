@@ -1,19 +1,50 @@
 package gredis
 
-import "github.com/redis/go-redis/v9"
+import (
+	"context"
+	"github.com/redis/go-redis/v9"
+)
 
-type GRedis struct {
-	client *redis.Client
+type RedisClient struct {
+	*redis.Client
+	globalCtx context.Context
 }
 
-func New() interface{} {
+func NewRedisClient(option Option) Redis {
 	rdb := redis.NewClient(&redis.Options{
 		Addr:     "localhost:6379",
 		Password: "",
-		DB:       0, 
+		DB:       0,
 	})
-	g := &GRedis{
-		client: rdb,
+	return &RedisClient{
+		Client:    rdb,
+		globalCtx: context.Background(),
 	}
-	return g
+}
+
+func (c *RedisClient) Get(key string) (string, error) {
+	strCmd := c.Client.Get(c.globalCtx, key)
+	return strCmd.String(), strCmd.Err()
+}
+
+func (c *RedisClient) Set(key, val string) error {
+	statusCmd := c.Client.Set(c.globalCtx, key, val, 0)
+	return statusCmd.Err()
+}
+
+func (c *RedisClient) HGet(key, field string) (string, error) {
+	strCmd := c.Client.HGet(c.globalCtx, key, field)
+	return strCmd.String(), strCmd.Err()
+}
+
+// HSet
+//
+//   - HSet("myhash", "key1", "value1", "key2", "value2")
+//
+//   - HSet("myhash", []string{"key1", "value1", "key2", "value2"})
+//
+//   - HSet("myhash", map[string]interface{}{"key1": "value1", "key2": "value2"})
+func (c *RedisClient) HSet(key string, values ...interface{}) (int, error) {
+	intCmd := c.Client.HSet(c.globalCtx, key, values)
+	return int(intCmd.Val()), intCmd.Err()
 }

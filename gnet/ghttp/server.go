@@ -4,6 +4,7 @@ import (
 	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"net"
 	"net/http"
 	"strconv"
@@ -19,6 +20,7 @@ func NewServer() *Server {
 	gin.SetMode(gin.ReleaseMode)
 	engine := gin.New()
 	engine.Use(gin.Recovery(), GinLogger())
+	engine.Use(otelgin.Middleware("my-server"))
 	binding.Validator = new(Validator)
 
 	return &Server{engine: engine}

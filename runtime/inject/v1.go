@@ -2,14 +2,24 @@ package inject
 
 import (
 	"github.com/chuck1024/gd/v2/logger"
-	"go.uber.org/fx"
 	"reflect"
 )
 
+type StartAble interface {
+	Start() error
+}
+
+type CloseAble interface {
+	Close()
+}
+
+type Injectable interface {
+	StartAble
+	CloseAble
+}
+
 func InitDefault() {
 	//g = NewGraph()
-	app := fx.New()
-	app.Run()
 }
 
 func Close() {
