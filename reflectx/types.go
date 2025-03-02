@@ -5,8 +5,6 @@ import (
 	"reflect"
 )
 
-
-
 type Reflectx struct {
 	// store the origin value pass to reflectx
 	originValue interface{}
@@ -42,7 +40,15 @@ type Methodx struct {
 	IsExported bool
 	InParams   []*Fieldx
 	OutParams  []*Fieldx
+	Kind       MethodKind
 }
+
+type MethodKind int
+
+const (
+	PtrMethod MethodKind = iota
+	StructMethod
+)
 
 func (f *Methodx) String() string {
 	return fmt.Sprintf("%+v", *f)

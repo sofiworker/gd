@@ -1,159 +1,263 @@
 package inject
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"github.com/chuck1024/gd/v2/reflectx"
 	"go.uber.org/dig"
+	"io"
+	"os"
 	"reflect"
+	"sync"
 )
 
 var (
 	NotStructError               = errors.New("not a struct")
 	BasicTypeShouldWithNameError = errors.New("basic type should with name")
+	NameOrGroupOnlyOneError      = errors.New("name or group only one")
+	SkipInjectTag                = "-"
 )
 
 type Container struct {
 	container *dig.Container
 	injectTag string
+	locker    *sync.RWMutex
 }
 
-type Lifecycle interface {
+type AppLifecycle interface {
 	OnStart(context.Context) error
 	OnStop(context.Context) error
 }
 
-type Instance interface {
-	New(params ...interface{}) (interface{}, error)
+type InvokeLifecycle interface {
+	BeforeInject(context.Context) error
+	AfterInject(context.Context) error
+}
+
+type ProvideOption interface {
+	ApplyProvideOption(*ProvideOptions)
+}
+
+type ProvideOptions struct {
+	Name  string
+	Group string
+	As    []interface{}
 }
 
 func New() *Container {
-	container := dig.New()
-	return &Container{container: container, injectTag: "gd"}
+	container := dig.New(dig.RecoverFromPanics())
+	return &Container{container: container, injectTag: "gd", locker: &sync.RWMutex{}}
 }
 
-func (c *Container) SetInjectTag(tag string) {
+func (c *Container) SetInjectTag(tag string) *Container {
 	c.injectTag = tag
+	return c
 }
 
-func (c *Container) Provide(data interface{}, opts ...dig.ProvideOption) error {
-	if reflectx.IsBasicType(data) && len(opts) == 0 {
+type NameOption string
+
+func (o NameOption) ApplyProvideOption(opt *ProvideOptions) {
+	opt.Name = string(o)
+}
+
+func WithName(name string) ProvideOption {
+	return NameOption(name)
+}
+
+type GroupOption string
+
+func (o GroupOption) ApplyProvideOption(opt *ProvideOptions) {
+	opt.Group = string(o)
+}
+
+func WithGroup(group string) ProvideOption {
+	return GroupOption(group)
+}
+
+func (c *Container) ProvideWithName(data interface{}, name string) error {
+	return c.Provide(data, WithName(name))
+}
+
+func (c *Container) Provide(data interface{}, opts ...ProvideOption) error {
+	c.locker.Lock()
+	defer c.locker.Unlock()
+	hasName := false
+	hasGroup := false
+	for _, opt := range opts {
+		if _, ok := opt.(NameOption); ok {
+			hasName = true
+		}
+		if _, ok := opt.(GroupOption); ok {
+			hasGroup = true
+		}
+	}
+
+	if reflectx.IsBasicType(data) && (!hasName || !hasGroup) {
 		return BasicTypeShouldWithNameError
 	}
+
+	if hasName && hasGroup {
+		return NameOrGroupOnlyOneError
+	}
+
+	options := BuildDigProvideOption(opts...)
 
 	constructor, err := c.GenerateConstructor(data)
 	if err != nil {
 		return err
 	}
-	return c.container.Provide(constructor, opts...)
+	return c.container.Provide(constructor, options...)
 }
 
-// GenerateConstructor 通过反射生成结构体的构造函数
-func (c *Container) GenerateConstructor(instance interface{}) (interface{}, error) {
-	// 获取实例的类型
-	t := reflect.TypeOf(instance)
+func BuildDigProvideOption(opts ...ProvideOption) []dig.ProvideOption {
+	var provideOpts ProvideOptions
+	for _, opt := range opts {
+		opt.ApplyProvideOption(&provideOpts)
+	}
+	ret := make([]dig.ProvideOption, 0)
+	if provideOpts.Name != "" {
+		ret = append(ret, dig.Name(provideOpts.Name))
+	}
+	if provideOpts.Group != "" {
+		ret = append(ret, dig.Group(provideOpts.Group))
+	}
+	if provideOpts.As != nil {
+		for _, as := range provideOpts.As {
+			ret = append(ret, dig.As(as))
+		}
+	}
+	if provideOpts.Group != "" {
+		ret = append(ret, dig.Group(provideOpts.Group))
+	}
 
-	// 处理指针类型（如传入 &MyStruct{}，则构造函数返回 *MyStruct）
+	return ret
+}
+
+// GenerateConstructor generates a constructor function for the given instance using reflection
+func (c *Container) GenerateConstructor(instance interface{}) (interface{}, error) {
+	if instance == nil {
+		return nil, errors.New("instance cannot be nil")
+	}
+
+	// Get instance type
+	t := reflect.TypeOf(instance)
+	if t == nil {
+		return nil, errors.New("cannot get type information")
+	}
+
+	// Handle pointer types
 	isPtr := t.Kind() == reflect.Ptr
 	if isPtr {
-		t = t.Elem() // 获取指针指向的类型（即 MyStruct）
+		t = t.Elem()
+		if t == nil {
+			return nil, errors.New("nil pointer dereference")
+		}
 	}
-	//// 确保传入的是结构体
-	//if t.Kind() != reflect.Struct {
-	//	return nil, NotStructError
-	//}
 
 	valueOf := reflect.ValueOf(instance)
+	if isPtr {
+		valueOf = valueOf.Elem()
+	}
+
 	if reflectx.IsBasicType(instance) {
 		ctorType := reflect.FuncOf(nil, []reflect.Type{t}, false)
 		fn := reflect.MakeFunc(ctorType, func(args []reflect.Value) []reflect.Value {
 			if isPtr {
-				return []reflect.Value{valueOf.Addr()} // 返回指针
+				return []reflect.Value{valueOf.Addr()}
 			}
-			return []reflect.Value{valueOf} // 返回值
+			return []reflect.Value{valueOf}
 		})
 		return fn.Interface(), nil
 	}
 
-	// 收集结构体字段的类型作为构造函数参数
+	// Collect struct field types as constructor parameters
 	var paramTypes []reflect.Type
+	var fieldIndices []int
 	for i := 0; i < t.NumField(); i++ {
 		field := t.Field(i)
 		if field.PkgPath != "" {
 			continue
 		}
-		tagVal := field.Tag.Get(c.injectTag)
-		if tagVal == "-" {
+		if tagVal := field.Tag.Get(c.injectTag); tagVal == SkipInjectTag {
 			continue
 		}
-		if field.Type.Kind() != reflect.Struct || field.Type.Elem().Kind() != reflect.Struct {
-			continue
+		if !isBasicType(field.Type.Kind()) {
+			paramTypes = append(paramTypes, field.Type)
+			fieldIndices = append(fieldIndices, i)
 		}
-		paramTypes = append(paramTypes, field.Type)
 	}
 
-	// 构造函数的返回类型
+	// Set return type
 	returnType := t
 	if isPtr {
 		returnType = reflect.PointerTo(t)
 	}
 
-	// 定义构造函数类型：func(...paramTypes) returnType
 	ctorType := reflect.FuncOf(paramTypes, []reflect.Type{returnType}, false)
 
-	// 创建函数实现
 	fn := reflect.MakeFunc(ctorType, func(args []reflect.Value) []reflect.Value {
+		newInstance := reflect.New(t).Elem()
 
-		// 将参数赋值给结构体的导出字段
-		argIndex := 0
-		for i := 0; i < t.NumField(); i++ {
-			field := t.Field(i)
-			if field.PkgPath != "" {
-				continue // 跳过未导出的字段
-			}
-			tagVal := field.Tag.Get(c.injectTag)
-			if tagVal == "-" {
-				continue
-			}
-			if field.Type.Kind() != reflect.Struct || field.Type.Elem().Kind() != reflect.Struct {
-				continue
-			}
-			if argIndex >= len(args) {
+		// Copy all fields from initial value
+		if valueOf.IsValid() {
+			newInstance.Set(valueOf)
+		}
+
+		// Set only injectable fields
+		for i, fieldIdx := range fieldIndices {
+			if i >= len(args) {
 				break
 			}
-			valueOf.Field(i).Set(args[argIndex])
-			argIndex++
+			newInstance.Field(fieldIdx).Set(args[i])
 		}
 
 		if isPtr {
-			return []reflect.Value{valueOf.Addr()} // 返回指针
+			return []reflect.Value{newInstance.Addr()}
 		}
-		return []reflect.Value{valueOf} // 返回值
+		return []reflect.Value{newInstance}
 	})
 
 	return fn.Interface(), nil
 }
 
-func (c *Container) Register() error {
-	err := c.container.Provide(func() {
-
-	})
-	if err != nil {
-		return err
+func isBasicType(k reflect.Kind) bool {
+	switch k {
+	case reflect.Bool, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Float32, reflect.Float64, reflect.String:
+		return true
+	default:
+		return false
 	}
-	return nil
-}
-
-func (c *Container) RegisterSingle() error {
-	err := c.container.Provide(func() {
-
-	}, dig.Name("ro"))
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *Container) Invoke(f interface{}) error {
 	return c.container.Invoke(f)
+}
+
+//func (c *Container) InvokeWithName(f interface{}) error {
+//	return c.container.Invoke(f)
+//}
+
+func (c *Container) PrintGraph(writers ...io.Writer) {
+	if len(writers) == 0 {
+		writers = append(writers, os.Stdout)
+	}
+	for _, w := range writers {
+		err := dig.Visualize(c.container, w)
+		if err != nil {
+			panic(err)
+		}
+		return
+	}
+}
+
+func (c *Container) GetGraphString() string {
+	var b bytes.Buffer
+	err := dig.Visualize(c.container, &b)
+	if err != nil {
+		panic(err)
+	}
+	return b.String()
 }

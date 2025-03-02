@@ -3,6 +3,7 @@ package reflectx
 import (
 	"fmt"
 	"log"
+	"reflect"
 	"testing"
 )
 
@@ -97,4 +98,20 @@ func TestCheckPrtDepth(t *testing.T) {
 	ret = CheckPtrDepth(m)
 	log.Println(ret)
 
+}
+
+type MyInt int
+
+func (i MyInt) String1(a string) string {
+	return fmt.Sprintf("%d", i)
+}
+
+func TestAlias(t *testing.T) {
+	i := MyInt(10)
+	of := reflect.TypeOf(i)
+	fmt.Println(of.Kind())
+	for i := range of.NumMethod() {
+		method := of.Method(i)
+		fmt.Println(method.Name)
+	}
 }

@@ -7,84 +7,78 @@ import (
 	"github.com/chuck1024/gd/v2/gerr"
 )
 
-// New only can decode ptr, if use ptr to ptr will panic
+var (
+	NilValue    = fmt.Errorf("nil value")
+	UnknownType = fmt.Errorf("unknown type")
+)
+
+// New return a reflectx instance
 func New(v interface{}) *Reflectx {
-	if CheckPtrDepth(v) > 1 {
-		panic(gerr.NotAllowMultiLayerPointer)
+	if IsNil(v) {
+		panic(NilValue)
 	}
+
 	typeOf := reflect.TypeOf(v)
 	valueOf := reflect.ValueOf(v)
-	if typeOf.Kind() == reflect.Pointer {
-		typeOf = typeOf.Elem()
-		valueOf = valueOf.Elem()
+
+	instance := &Reflectx{
+		originValue: v,
+		FieldMap:    make(map[string]*Fieldx),
+		MethodMap:   make(map[string]*Methodx),
+		PkgPath:     typeOf.PkgPath(),
+		Kind:        typeOf.Kind(),
 	}
-	var fillValue interface{}
-	fieldMap := make(map[string]*Fieldx)
-	methodMap := make(map[string]*Methodx)
+PTR:
 	switch typeOf.Kind() {
-	case reflect.Bool:
-		b := reflect.New(typeOf).Bool()
-		fillValue = b
 	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64:
 	case reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
 	case reflect.Float32, reflect.Float64:
-		fieldMap[typeOf.Name()] = &Fieldx{}
-	case reflect.Array, reflect.Slice:
-	case reflect.Chan:
-	case reflect.Interface:
-	case reflect.Map:
-	case reflect.Pointer:
 	case reflect.String:
+	case reflect.Bool:
+	case reflect.Array:
+	case reflect.Slice:
+	case reflect.Map:
+	case reflect.Chan:
+	case reflect.Ptr:
+		typeOf = typeOf.Elem()
+		valueOf = valueOf.Elem()
+		goto PTR
 	case reflect.Struct:
-		// handle struct field
-		nums := typeOf.NumField()
-		for i := 0; i < nums; i++ {
-			f := typeOf.Field(i)
-			v := valueOf.Field(i)
+		for i := 0; i < typeOf.NumField(); i++ {
+			structField := typeOf.Field(i)
 			field := &Fieldx{
-				Name:      f.Name,
-				Tag:       f.Tag,
-				Kind:      f.Type.Kind(),
-				PkgPath:   f.PkgPath,
-				Anonymous: f.Anonymous,
+				Name:      structField.Name,
+				Tag:       structField.Tag,
+				Kind:      structField.Type.Kind(),
+				PkgPath:   structField.PkgPath,
+				Anonymous: structField.Anonymous,
 			}
-			if v.CanInterface() {
-				field.Value = v.Interface()
-			}
-			fieldMap[f.Name] = field
+			instance.FieldMap[field.Name] = field
 		}
-		// handle struct method
-		typeOf = reflect.PointerTo(typeOf)
-		nums = typeOf.NumMethod()
-		for i := 0; i < nums; i++ {
+		for i := 0; i < typeOf.NumMethod(); i++ {
 			m := typeOf.Method(i)
 			methodx := &Methodx{
 				Name:       m.Name,
 				PkgPath:    m.PkgPath,
 				Index:      m.Index,
 				IsExported: m.IsExported(),
+				Kind:       PtrMethod,
 			}
 			methodType := m.Type
 			methodx.InParams, methodx.OutParams = GetFuncOrMethodInParams(methodType), GetFuncOrMethodOutParams(methodType)
-			methodMap[m.Name] = methodx
+			instance.MethodMap[m.Name] = methodx
 		}
-
 	case reflect.Func:
 		methodx := &Methodx{
 			Name:    typeOf.Name(),
 			PkgPath: typeOf.PkgPath(),
 		}
 		methodx.InParams, methodx.OutParams = GetFuncOrMethodInParams(typeOf), GetFuncOrMethodOutParams(typeOf)
-		methodMap[typeOf.Name()] = methodx
+		instance.MethodMap[typeOf.Name()] = methodx
+	default:
+		panic(UnknownType)
 	}
-	return &Reflectx{
-		originValue: v,
-		fillValue:   fillValue,
-		FieldMap:    fieldMap,
-		MethodMap:   methodMap,
-		PkgPath:     typeOf.PkgPath(),
-		Kind:        typeOf.Kind(),
-	}
+	return instance
 }
 
 func CheckPtrDepth(v interface{}) int {
@@ -95,6 +89,19 @@ func CheckPtrDepth(v interface{}) int {
 		typeOf = typeOf.Elem()
 	}
 	return ret
+}
+
+func IsNil(i interface{}) bool {
+	if i == nil {
+		return true
+	}
+	v := reflect.ValueOf(i)
+	switch v.Kind() {
+	case reflect.Chan, reflect.Func, reflect.Map, reflect.Ptr, reflect.Interface, reflect.Slice:
+		return v.IsNil()
+	default:
+		return false
+	}
 }
 
 // Default will return `v` with filling default value
@@ -128,9 +135,9 @@ func GetFuncOrMethodInParams(valueOf interface{}) []*Fieldx {
 		funcType = v
 	default:
 		funcType = reflect.TypeOf(valueOf)
-		if funcType.Kind() == reflect.Pointer {
-			funcType = funcType.Elem()
-		}
+		//if funcType.Kind() == reflect.Pointer {
+		//	funcType = funcType.Elem()
+		//}
 	}
 
 	if funcType.Kind() != reflect.Func {
@@ -162,9 +169,9 @@ func GetFuncOrMethodOutParams(valueOf interface{}) []*Fieldx {
 		funcType = v
 	default:
 		funcType = reflect.TypeOf(valueOf)
-		if funcType.Kind() == reflect.Pointer {
-			funcType = funcType.Elem()
-		}
+		//if funcType.Kind() == reflect.Pointer {
+		//	funcType = funcType.Elem()
+		//}
 	}
 
 	if funcType.Kind() != reflect.Func {
@@ -226,6 +233,7 @@ func (r *Reflectx) IsMethodOrFunc() bool {
 }
 
 func (r *Reflectx) GetNumIn(index int) int {
+	//return r.
 	return 0
 }
 
