@@ -1,8 +1,7 @@
 package ghttp
 
 import (
-	"fmt"
-	"github.com/chuck1024/gd/v2/logger"
+	"errors"
 	"github.com/gin-gonic/gin"
 	"github.com/gin-gonic/gin/binding"
 	"github.com/go-playground/validator/v10"
@@ -17,6 +16,7 @@ var (
 		http.StatusInternalServerError: "internal server error",
 		http.StatusOK:                  "ok",
 	}
+	OnlyWrapFuncError = errors.New("only wrap function")
 )
 
 type HttpResponse struct {
@@ -81,42 +81,21 @@ func GinJsonWrap(f interface{}) func(c *gin.Context) {
 	return ginReturnWrap(f, "")
 }
 
-func getStructOrSliceFromBody(c *gin.Context, rType reflect.Type) (reflect.Value, error) {
-	method := c.Request.Method
-	switch method {
-	case http.MethodGet:
-		// 打印告警日志
-	case http.MethodPost:
-		if c.Request.ContentLength == 0 {
-			return reflect.Value{}, fmt.Errorf("the request body length is 0")
-		}
-	}
-
-	switch rType.Kind() {
-	case reflect.Struct, reflect.Array, reflect.Slice:
-	default:
-		return reflect.Value{}, fmt.Errorf("only support struct data")
-	}
-
-	data := reflect.New(rType)
-	err := c.BindJSON(data.Interface())
-	if err != nil {
-		// 是否为验证错误
-		logger.Errorf("bind json failed:%v", err)
-		return reflect.Value{}, err
-	}
-	return data, nil
-}
-
 // GinGdWrap 兼容gd框架返回值
 func GinGdWrap(f interface{}) func(c *gin.Context) {
 	return ginReturnWrap(f, "gd")
 }
 
 func ginReturnWrap(f interface{}, kind string) func(c *gin.Context) {
+	valueOf := reflect.ValueOf(f)
+	typeOf := valueOf.Type()
+	if typeOf.Kind() != reflect.Func {
+		panic(OnlyWrapFuncError)
+	}
 	return func(ctx *gin.Context) {
 		defer func() {
 			if e := recover(); e != nil {
+				//debug.PrintStack()
 				ctx.AbortWithStatusJSON(http.StatusOK, &HttpResponse{
 					Code:    http.StatusInternalServerError,
 					Message: RetMap[http.StatusInternalServerError],
@@ -124,61 +103,43 @@ func ginReturnWrap(f interface{}, kind string) func(c *gin.Context) {
 				return
 			}
 		}()
-		valueOf := reflect.ValueOf(f)
-		typeOf := valueOf.Type()
-		if typeOf.Kind() != reflect.Func {
-			return
-		}
 
 		numIn := typeOf.NumIn()
-
 		inValueList := make([]reflect.Value, numIn)
+
 		for idx := 0; idx < numIn; idx++ {
-			in := typeOf.In(idx)
-			var value reflect.Value
-		InPtr:
-			switch in.Kind() {
-			case reflect.Ptr:
-				// 如果是指针并且为 gin.Context
-				if in.Elem() == reflect.TypeOf((*gin.Context)(nil)).Elem() {
-					value = reflect.ValueOf(ctx)
-					break
-				}
-				in = in.Elem()
-				goto InPtr
-			case reflect.Struct:
-				// 如果是结构体并且为 gin.Context
-				if in == reflect.TypeOf(gin.Context{}) {
-					value = reflect.ValueOf(*ctx.Copy())
-					break
-				}
-				data, err := getStructOrSliceFromBody(ctx, in)
-				if err != nil {
-					ctx.AbortWithStatusJSON(http.StatusOK, &HttpResponse{
-						Code:    http.StatusBadRequest,
-						Message: RetMap[http.StatusBadRequest],
-					})
-					return
-				}
-				value = data
-			case reflect.Array, reflect.Slice:
-				data, err := getStructOrSliceFromBody(ctx, in)
-				if err != nil {
-					ctx.AbortWithStatusJSON(http.StatusOK, &HttpResponse{
-						Code:    http.StatusBadRequest,
-						Message: RetMap[http.StatusBadRequest],
-					})
-					return
-				}
-				value = data
-			default:
-				// 其他类型
-				value = reflect.Zero(in)
+			paramType := typeOf.In(idx)
+			if paramType.Kind() == reflect.Ptr && paramType.Elem() == reflect.TypeOf((*gin.Context)(nil)).Elem() {
+				inValueList[idx] = reflect.ValueOf(ctx)
+				continue
+			}
+			// 如果是结构体并且为 gin.Context
+			if paramType == reflect.TypeOf(gin.Context{}) {
+				inValueList[idx] = reflect.ValueOf(*ctx.Copy())
+				continue
+			}
+			value, err := resolveParam(paramType, ctx)
+			if err != nil {
+				ctx.AbortWithStatusJSON(http.StatusOK, &HttpResponse{
+					Code:    http.StatusInternalServerError,
+					Message: RetMap[http.StatusInternalServerError],
+				})
+				return
 			}
 			inValueList[idx] = value
 		}
 
 		retValues := valueOf.Call(inValueList)
+		if len(retValues) == 0 {
+			return
+		}
+		if len(retValues) > 4 {
+			ctx.AbortWithStatusJSON(http.StatusOK, &HttpResponse{
+				Code:    http.StatusInternalServerError,
+				Message: RetMap[http.StatusInternalServerError],
+			})
+			return
+		}
 
 		resp := &HttpResponse{
 			Code:    http.StatusOK,
@@ -192,36 +153,16 @@ func ginReturnWrap(f interface{}, kind string) func(c *gin.Context) {
 			code int
 		)
 		for _, value := range retValues {
-			retType := value.Type()
-		RetPtr:
-			switch retType.Kind() {
-			case reflect.Ptr:
-				retType = retType.Elem()
-				value = value.Elem()
-				goto RetPtr
-			case reflect.Interface:
-				if retType.Implements(reflect.TypeOf((*error)(nil)).Elem()) {
-					retErr, ok := value.Interface().(error)
-					if !ok {
-						err = fmt.Errorf("convert error")
-					}
-					err = retErr
-				}
-			case reflect.Array, reflect.Slice, reflect.Struct:
-				data = value.Interface()
-			case reflect.String:
-				msg = value.String()
-			case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
-				reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64:
-				if value.CanInt() {
-					i := value.Int()
-					code = int(i)
-				}
-				if value.CanUint() {
-					u := value.Uint()
-					code = int(u)
-				}
+			val := value.Interface()
+			switch v := val.(type) {
+			case error:
+				err = v
+			case string:
+				msg = v
+			case int:
+				code = v
 			default:
+				data = v
 			}
 		}
 
@@ -257,6 +198,42 @@ func ginReturnWrap(f interface{}, kind string) func(c *gin.Context) {
 		}
 
 		ctx.JSON(http.StatusOK, resp)
+	}
+}
+
+func resolveParam(paramType reflect.Type, c *gin.Context) (reflect.Value, error) {
+	switch paramType.Kind() {
+	case reflect.Ptr:
+		elemType := paramType.Elem()
+		// 递归处理元素类型
+		elemValue, err := resolveParam(elemType, c)
+		if err != nil {
+			return reflect.Value{}, err
+		}
+		// 创建一个新的指针实例并设置其指向的值
+		ptrValue := reflect.New(elemType)
+		ptrValue.Elem().Set(elemValue)
+		return ptrValue, nil
+	case reflect.Struct, reflect.Map:
+		// 如果是结构体并且为 gin.Context
+		if paramType == reflect.TypeOf(gin.Context{}) {
+			return reflect.ValueOf(c.Copy()), nil
+		}
+		instance := reflect.New(paramType).Interface()
+		if err := c.ShouldBind(instance); err != nil {
+			return reflect.Value{}, err
+		}
+		return reflect.ValueOf(instance).Elem(), nil
+	case reflect.Slice, reflect.Array:
+		// 对于数组、切片尝试从body中解码json到实例
+		instance := reflect.New(paramType).Interface()
+		if err := c.ShouldBind(instance); err != nil {
+			return reflect.Value{}, err
+		}
+		return reflect.ValueOf(instance).Elem(), nil
+	default:
+		// 对于其他类型尝试从query、form中获取值
+		return reflect.Zero(paramType), nil
 	}
 }
 
