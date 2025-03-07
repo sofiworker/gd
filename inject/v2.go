@@ -2,78 +2,12 @@ package inject
 
 import (
 	"bytes"
-	"context"
-	"errors"
 	"github.com/chuck1024/gd/v2/reflectx"
 	"go.uber.org/dig"
 	"io"
 	"os"
 	"reflect"
-	"sync"
 )
-
-var (
-	NotStructError               = errors.New("not a struct")
-	BasicTypeShouldWithNameError = errors.New("basic type should with name")
-	NameOrGroupOnlyOneError      = errors.New("name or group only one")
-	SkipInjectTag                = "-"
-)
-
-type Container struct {
-	container *dig.Container
-	injectTag string
-	locker    *sync.RWMutex
-}
-
-type AppLifecycle interface {
-	OnStart(context.Context) error
-	OnStop(context.Context) error
-}
-
-type InvokeLifecycle interface {
-	BeforeInject(context.Context) error
-	AfterInject(context.Context) error
-}
-
-type ProvideOption interface {
-	ApplyProvideOption(*ProvideOptions)
-}
-
-type ProvideOptions struct {
-	Name  string
-	Group string
-	As    []interface{}
-}
-
-func New() *Container {
-	container := dig.New(dig.RecoverFromPanics())
-	return &Container{container: container, injectTag: "gd", locker: &sync.RWMutex{}}
-}
-
-func (c *Container) SetInjectTag(tag string) *Container {
-	c.injectTag = tag
-	return c
-}
-
-type NameOption string
-
-func (o NameOption) ApplyProvideOption(opt *ProvideOptions) {
-	opt.Name = string(o)
-}
-
-func WithName(name string) ProvideOption {
-	return NameOption(name)
-}
-
-type GroupOption string
-
-func (o GroupOption) ApplyProvideOption(opt *ProvideOptions) {
-	opt.Group = string(o)
-}
-
-func WithGroup(group string) ProvideOption {
-	return GroupOption(group)
-}
 
 func (c *Container) ProvideWithName(data interface{}, name string) error {
 	return c.Provide(data, WithName(name))
@@ -93,7 +27,7 @@ func (c *Container) Provide(data interface{}, opts ...ProvideOption) error {
 		}
 	}
 
-	if reflectx.IsBasicType(data) && (!hasName || !hasGroup) {
+	if reflectx.IsBasicType(data) && !hasName && !hasGroup {
 		return BasicTypeShouldWithNameError
 	}
 
@@ -127,9 +61,6 @@ func BuildDigProvideOption(opts ...ProvideOption) []dig.ProvideOption {
 			ret = append(ret, dig.As(as))
 		}
 	}
-	if provideOpts.Group != "" {
-		ret = append(ret, dig.Group(provideOpts.Group))
-	}
 
 	return ret
 }
@@ -137,21 +68,17 @@ func BuildDigProvideOption(opts ...ProvideOption) []dig.ProvideOption {
 // GenerateConstructor generates a constructor function for the given instance using reflection
 func (c *Container) GenerateConstructor(instance interface{}) (interface{}, error) {
 	if instance == nil {
-		return nil, errors.New("instance cannot be nil")
+		return nil, NilError
 	}
 
-	// Get instance type
 	t := reflect.TypeOf(instance)
-	if t == nil {
-		return nil, errors.New("cannot get type information")
-	}
 
 	// Handle pointer types
 	isPtr := t.Kind() == reflect.Ptr
 	if isPtr {
 		t = t.Elem()
 		if t == nil {
-			return nil, errors.New("nil pointer dereference")
+			return nil, NilPtrError
 		}
 	}
 
@@ -160,7 +87,13 @@ func (c *Container) GenerateConstructor(instance interface{}) (interface{}, erro
 		valueOf = valueOf.Elem()
 	}
 
-	if reflectx.IsBasicType(instance) {
+	switch t.Kind() {
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
+		reflect.Complex64, reflect.Complex128,
+		reflect.Float32, reflect.Float64,
+		reflect.String, reflect.Bool,
+		reflect.Array, reflect.Slice, reflect.Map, reflect.Chan, reflect.Func, reflect.Interface:
 		ctorType := reflect.FuncOf(nil, []reflect.Type{t}, false)
 		fn := reflect.MakeFunc(ctorType, func(args []reflect.Value) []reflect.Value {
 			if isPtr {
@@ -169,6 +102,9 @@ func (c *Container) GenerateConstructor(instance interface{}) (interface{}, erro
 			return []reflect.Value{valueOf}
 		})
 		return fn.Interface(), nil
+	case reflect.Struct:
+	default:
+		return nil, TypeError
 	}
 
 	// Collect struct field types as constructor parameters
@@ -197,25 +133,26 @@ func (c *Container) GenerateConstructor(instance interface{}) (interface{}, erro
 	ctorType := reflect.FuncOf(paramTypes, []reflect.Type{returnType}, false)
 
 	fn := reflect.MakeFunc(ctorType, func(args []reflect.Value) []reflect.Value {
-		newInstance := reflect.New(t).Elem()
-
-		// Copy all fields from initial value
-		if valueOf.IsValid() {
-			newInstance.Set(valueOf)
-		}
+		//newInstance := reflect.New(t).Elem()
+		//
+		//// Copy all fields from initial value
+		//if valueOf.IsValid() {
+		//	newInstance.Set(valueOf)
+		//}
 
 		// Set only injectable fields
 		for i, fieldIdx := range fieldIndices {
 			if i >= len(args) {
 				break
 			}
-			newInstance.Field(fieldIdx).Set(args[i])
+			//newInstance.Field(fieldIdx).Set(args[i])
+			valueOf.Field(fieldIdx).Set(args[i])
 		}
 
 		if isPtr {
-			return []reflect.Value{newInstance.Addr()}
+			return []reflect.Value{valueOf.Addr()}
 		}
-		return []reflect.Value{newInstance}
+		return []reflect.Value{valueOf}
 	})
 
 	return fn.Interface(), nil
@@ -234,6 +171,10 @@ func isBasicType(k reflect.Kind) bool {
 
 func (c *Container) Invoke(f interface{}) error {
 	return c.container.Invoke(f)
+}
+
+func (c *Container) InvokeAll() error {
+	return nil
 }
 
 //func (c *Container) InvokeWithName(f interface{}) error {

@@ -272,15 +272,15 @@ func IsBasicType(data interface{}) bool {
 	if t == nil {
 		return false
 	}
-	// 解引用指针类型
 	for t.Kind() == reflect.Ptr {
 		t = t.Elem()
 	}
-	// 检查基础类型
 	switch t.Kind() {
-	case reflect.String, reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
+	case reflect.Int, reflect.Int8, reflect.Int16, reflect.Int32, reflect.Int64,
 		reflect.Uint, reflect.Uint8, reflect.Uint16, reflect.Uint32, reflect.Uint64,
-		reflect.Float32, reflect.Float64, reflect.Bool:
+		reflect.Complex64, reflect.Complex128,
+		reflect.Float32, reflect.Float64,
+		reflect.String, reflect.Bool:
 		return true
 	default:
 		return false

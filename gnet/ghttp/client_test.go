@@ -8,10 +8,11 @@ import (
 
 func TestClient(t *testing.T) {
 	client := NewClient()
-	_, err := client.R().SetMethod(http.MethodGet).SetBearToken("11111").Done()
+	r, err := client.R().SetUrl("https://www.baidu.com").SetMethod(http.MethodGet).SetEnableDumpBody(true).Done()
 	if err != nil {
-		t.Error(err)
+		t.Fatal(err)
 	}
+	fmt.Println(string(r.BodyRaw))
 }
 
 func TestUrl(t *testing.T) {

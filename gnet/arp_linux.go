@@ -8,14 +8,14 @@ import (
 	"unsafe"
 )
 
-// 以太网帧头结构
+// EthernetHeader 以太网帧头结构
 type EthernetHeader struct {
 	DstMAC    [6]byte
 	SrcMAC    [6]byte
 	EtherType uint16
 }
 
-// ARP报文结构
+// ArpHeader ARP报文结构
 type ArpHeader struct {
 	HardwareType    uint16
 	ProtocolType    uint16
