@@ -34,12 +34,12 @@ func client() {
 	go func() {
 		defer close(done)
 		for {
-			mt, message, err := c.ReadMessage()
-			if err != nil {
-				log.Println("read:", err)
-				return
-			}
-			log.Printf("recv: %s, type: %s", message, websocket.FormatMessageType(mt))
+			//mt, message, err := c.ReadMessage()
+			//if err != nil {
+			//	log.Println("read:", err)
+			//	return
+			//}
+			//log.Printf("recv: %s, type: %s", message, websocket.FormatMessageType(mt))
 		}
 	}()
 

@@ -44,10 +44,11 @@ type DigObjectWrap struct {
 }
 
 func NewGraph() *Graph {
-	container := New().SetInjectTag(injectTag)
-	return &Graph{
-		Container: container,
-	}
+	//container := New().SetInjectTag(injectTag)
+	//return &Graph{
+	//	Container: container,
+	//}
+	return nil
 }
 
 func getTypeName(t reflect.Type) string {

@@ -3,8 +3,6 @@ package inject
 import (
 	"context"
 	"errors"
-	"go.uber.org/dig"
-	"sync"
 )
 
 var (
@@ -16,12 +14,6 @@ var (
 	SkipInjectTag                = "-"
 )
 
-type Container struct {
-	container *dig.Container
-	injectTag string
-	locker    *sync.RWMutex
-}
-
 type AppLifecycle interface {
 	OnStart(context.Context) error
 	OnStop(context.Context) error
@@ -30,10 +22,6 @@ type AppLifecycle interface {
 type InvokeLifecycle interface {
 	BeforeInject(context.Context) error
 	AfterInject(context.Context) error
-}
-
-type ProvideOption interface {
-	ApplyProvideOption(*ProvideOptions)
 }
 
 type ProvideOptions struct {

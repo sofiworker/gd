@@ -3,7 +3,40 @@ package ghttp
 import (
 	"encoding/json"
 	"io"
+	"sync"
 )
+
+var decoders *DecoderInstance
+
+type DecoderInstance struct {
+	mutex    sync.RWMutex
+	decoders map[string]Decoder
+}
+
+func init() {
+	decoders = &DecoderInstance{
+		decoders: make(map[string]Decoder),
+	}
+
+	_ = RegisterDecoder("application/json", &jsonDecoder{})
+	_ = RegisterDecoder("application/xml", &xmlDecoder{})
+	_ = RegisterDecoder("application/yaml", &yamlDecoder{})
+	_ = RegisterDecoder("application/xml", &yamlDecoder{})
+}
+
+func RegisterDecoder(name string, d Decoder) error {
+	decoders.mutex.Lock()
+	defer decoders.mutex.Unlock()
+	decoders.decoders[name] = d
+	return nil
+}
+
+func (d *DecoderInstance) Exist(name string) (Decoder, bool) {
+	d.mutex.RLock()
+	defer d.mutex.RUnlock()
+	decoder, ok := d.decoders[name]
+	return decoder, ok
+}
 
 type Decoder interface {
 	Decode(reader io.Reader, v interface{}) error

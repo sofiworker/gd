@@ -10,20 +10,55 @@ import (
 	"strconv"
 )
 
+type ServerOpts struct {
+	DisallowUnknownFields bool
+	OtelName              string
+}
+
+type ServerOptsFunc func(opts *ServerOpts)
+
+func WithDisallowUnknownFields() ServerOptsFunc {
+	return func(opts *ServerOpts) {
+		opts.DisallowUnknownFields = true
+	}
+}
+
+func WithTraceName(name string) ServerOptsFunc {
+	return func(opts *ServerOpts) {
+		opts.OtelName = name
+	}
+}
+
 type Server struct {
 	Address string
 	Port    int
+	opts    *ServerOpts
 	engine  *gin.Engine
 }
 
-func NewServer() *Server {
+func NewServer(opts ...ServerOptsFunc) *Server {
 	gin.SetMode(gin.ReleaseMode)
+
 	engine := gin.New()
 	engine.Use(gin.Recovery(), GinLogger())
-	engine.Use(otelgin.Middleware("my-server"))
+
 	binding.Validator = new(Validator)
 
-	return &Server{engine: engine}
+	var sOpts ServerOpts
+	for _, opt := range opts {
+		opt(&sOpts)
+	}
+
+	if sOpts.DisallowUnknownFields {
+		binding.EnableDecoderDisallowUnknownFields = true
+	}
+
+	if sOpts.OtelName == "" {
+		sOpts.OtelName = "gin"
+	}
+	engine.Use(otelgin.Middleware(sOpts.OtelName))
+
+	return &Server{engine: engine, opts: &sOpts}
 }
 
 // ListenAndServe you should use this method in goroutine and then use gd.ListenShutDownSignals

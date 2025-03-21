@@ -1,21 +1,30 @@
 package inject
 
 import (
-	"bytes"
+	"fmt"
 	"github.com/chuck1024/gd/v2/reflectx"
 	"go.uber.org/dig"
-	"io"
-	"os"
 	"reflect"
+	"sync"
 )
 
-func (c *Container) ProvideWithName(data interface{}, name string) error {
-	return c.Provide(data, WithName(name))
+type ModuleOption struct {
+	injectTag string
 }
 
-func (c *Container) Provide(data interface{}, opts ...ProvideOption) error {
-	c.locker.Lock()
-	defer c.locker.Unlock()
+type ModuleOptionFunc func(opts *ModuleOption)
+
+type Module struct {
+	Name         string
+	parent       *Module
+	opts         *ModuleOption
+	digContainer *dig.Container
+	locker       *sync.RWMutex
+}
+
+func (m *Module) Provide(f interface{}, opts ...ProvideOption) error {
+	m.locker.Lock()
+	defer m.locker.Unlock()
 	hasName := false
 	hasGroup := false
 	for _, opt := range opts {
@@ -27,7 +36,7 @@ func (c *Container) Provide(data interface{}, opts ...ProvideOption) error {
 		}
 	}
 
-	if reflectx.IsBasicType(data) && !hasName && !hasGroup {
+	if reflectx.IsBasicType(f) && !hasName && !hasGroup {
 		return BasicTypeShouldWithNameError
 	}
 
@@ -37,36 +46,15 @@ func (c *Container) Provide(data interface{}, opts ...ProvideOption) error {
 
 	options := BuildDigProvideOption(opts...)
 
-	constructor, err := c.GenerateConstructor(data)
+	constructor, err := m.GenerateConstructor(f)
 	if err != nil {
 		return err
 	}
-	return c.container.Provide(constructor, options...)
-}
-
-func BuildDigProvideOption(opts ...ProvideOption) []dig.ProvideOption {
-	var provideOpts ProvideOptions
-	for _, opt := range opts {
-		opt.ApplyProvideOption(&provideOpts)
-	}
-	ret := make([]dig.ProvideOption, 0)
-	if provideOpts.Name != "" {
-		ret = append(ret, dig.Name(provideOpts.Name))
-	}
-	if provideOpts.Group != "" {
-		ret = append(ret, dig.Group(provideOpts.Group))
-	}
-	if provideOpts.As != nil {
-		for _, as := range provideOpts.As {
-			ret = append(ret, dig.As(as))
-		}
-	}
-
-	return ret
+	return m.digContainer.Provide(constructor, options...)
 }
 
 // GenerateConstructor generates a constructor function for the given instance using reflection
-func (c *Container) GenerateConstructor(instance interface{}) (interface{}, error) {
+func (m *Module) GenerateConstructor(instance interface{}) (interface{}, error) {
 	if instance == nil {
 		return nil, NilError
 	}
@@ -115,7 +103,7 @@ func (c *Container) GenerateConstructor(instance interface{}) (interface{}, erro
 		if field.PkgPath != "" {
 			continue
 		}
-		if tagVal := field.Tag.Get(c.injectTag); tagVal == SkipInjectTag {
+		if tagVal := field.Tag.Get(m.opts.injectTag); tagVal == SkipInjectTag {
 			continue
 		}
 		if !isBasicType(field.Type.Kind()) {
@@ -169,36 +157,52 @@ func isBasicType(k reflect.Kind) bool {
 	}
 }
 
-func (c *Container) Invoke(f interface{}) error {
-	return c.container.Invoke(f)
+func (m *Module) Invoke(f interface{}) error {
+	return m.digContainer.Invoke(f)
 }
 
-func (c *Container) InvokeAll() error {
+func (m *Module) InvokeAll(f interface{}) error {
 	return nil
 }
 
-//func (c *Container) InvokeWithName(f interface{}) error {
-//	return c.container.Invoke(f)
-//}
+func (m *Module) Inject(f interface{}) error {
+	typeOf := reflect.TypeOf(f)
 
-func (c *Container) PrintGraph(writers ...io.Writer) {
-	if len(writers) == 0 {
-		writers = append(writers, os.Stdout)
+	if typeOf.Kind() != reflect.Struct {
+		return fmt.Errorf("type error")
 	}
-	for _, w := range writers {
-		err := dig.Visualize(c.container, w)
-		if err != nil {
-			panic(err)
-		}
-		return
+
+	for i := 0; i < typeOf.NumField(); i++ {
+
 	}
+	return nil
 }
 
-func (c *Container) GetGraphString() string {
-	var b bytes.Buffer
-	err := dig.Visualize(c.container, &b)
-	if err != nil {
-		panic(err)
+func (m *Module) LookupByKey(key string) (interface{}, bool) {
+	return nil, false
+}
+
+func (m *Module) LookupByKeyGlobal(key string) (interface{}, bool) {
+	return nil, false
+}
+
+func BuildDigProvideOption(opts ...ProvideOption) []dig.ProvideOption {
+	var provideOpts ProvideOptions
+	for _, opt := range opts {
+		opt.ApplyProvideOption(&provideOpts)
 	}
-	return b.String()
+	ret := make([]dig.ProvideOption, 0)
+	if provideOpts.Name != "" {
+		ret = append(ret, dig.Name(provideOpts.Name))
+	}
+	if provideOpts.Group != "" {
+		ret = append(ret, dig.Group(provideOpts.Group))
+	}
+	if provideOpts.As != nil {
+		for _, as := range provideOpts.As {
+			ret = append(ret, dig.As(as))
+		}
+	}
+
+	return ret
 }

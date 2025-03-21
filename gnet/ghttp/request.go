@@ -1,11 +1,15 @@
 package ghttp
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"github.com/valyala/fasthttp"
 	"io"
+	"mime"
+	"net"
 	"reflect"
+	"time"
 )
 
 type Request struct {
@@ -25,6 +29,10 @@ type Request struct {
 	endResponse    int64
 	costResponse   int64
 	tracer         Tracer
+	file           string
+	fileReader     io.Reader
+	fileReaderSize int
+	resolver       Resolver
 }
 
 func (r *Request) SetBearToken(token string) *Request {
@@ -89,6 +97,26 @@ func (r *Request) SetEnableDumpBody(enable bool) *Request {
 	return r
 }
 
+func (r *Request) UploadFile(path string) *Request {
+	r.file = path
+	return r
+}
+
+func (r *Request) UploadFileByReader(reader io.Reader) *Request {
+	r.fileReader = reader
+	return r
+}
+
+func (r *Request) UploadFileByReaderWithSize(reader io.Reader, size int) *Request {
+	r.fileReader, r.fileReaderSize = reader, size
+	return r
+}
+
+func (r *Request) SetResolver(resolver Resolver) *Request {
+	r.resolver = resolver
+	return r
+}
+
 func (r *Request) Done() (*Response, error) {
 	if r.method == "" && r.client.defaultMethod == "" {
 		return nil, NotFoundMethodError
@@ -124,12 +152,43 @@ func (r *Request) Done() (*Response, error) {
 		_, end := r.client.tracer.StartSpan()
 		defer end()
 	}
+	startTime := time.Now().UnixMicro()
+	r.startRequest = startTime
+
+	if r.resolver != nil {
+		r.client.fastClient.Dial = (&fasthttp.TCPDialer{
+			Resolver: &net.Resolver{
+				PreferGo:     true,
+				StrictErrors: false,
+				Dial: func(ctx context.Context, network, address string) (net.Conn, error) {
+					return r.resolver.GoResolve(ctx, network, address)
+					//d := net.Dialer{}
+					//d.DialContext(ctx, "tcp", addr)
+					//return nil, nil
+				},
+			},
+		}).Dial
+	}
+
 	err = r.client.fastClient.Do(r.fr, resp.fResp)
 	if err != nil {
 		return nil, err
 	}
+	endTime := time.Now().UnixMicro()
+	costTime := endTime - startTime
+	r.endRequest = endTime
+	r.costRequest = costTime
+
 	resp.RemoteAddr = resp.fResp.RemoteAddr().String()
 	resp.BodyRaw = resp.fResp.Body()
+
+	mediaType, _, err := mime.ParseMediaType(string(resp.fResp.Header.ContentType()))
+	if err != nil {
+		return nil, err
+	}
+	if decoder, ok := decoders.Exist(mediaType); ok {
+		resp.decoder = decoder
+	}
 
 	if r.returnData != nil {
 		err = json.Unmarshal(resp.fResp.Body(), r.returnData)

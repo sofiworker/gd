@@ -34,14 +34,12 @@ type Client struct {
 	afterResponse  []func(*Request, *Response)
 	defaultDecoder Decoder
 	tracer         Tracer
+	resolver       Resolver
 }
 
 func NewClient() *Client {
 	c := &fasthttp.Client{
 		TLSConfig: &tls.Config{},
-		Dial: func(addr string) (net.Conn, error) {
-			return nil, nil
-		},
 	}
 	return &Client{fastClient: c, defaultDecoder: NewJsonDecoder()}
 }
@@ -84,6 +82,11 @@ func (c *Client) SetDefaultMethod(method string) *Client {
 
 func (c *Client) SetEnableDumpBody(enable bool) *Client {
 	c.enableDumpBody = enable
+	return c
+}
+
+func (c *Client) SetResolver(r Resolver) *Client {
+	c.resolver = r
 	return c
 }
 
