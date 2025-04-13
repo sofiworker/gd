@@ -3,6 +3,7 @@ package ghttp
 import (
 	"crypto/tls"
 	"fmt"
+	"github.com/chuck1024/gd/v2/gnet/gresolver"
 	"github.com/valyala/fasthttp"
 	"net"
 	"net/http"
@@ -34,7 +35,7 @@ type Client struct {
 	afterResponse  []func(*Request, *Response)
 	defaultDecoder Decoder
 	tracer         Tracer
-	resolver       Resolver
+	resolver       gresolver.Resolver
 }
 
 func NewClient() *Client {
@@ -85,7 +86,7 @@ func (c *Client) SetEnableDumpBody(enable bool) *Client {
 	return c
 }
 
-func (c *Client) SetResolver(r Resolver) *Client {
+func (c *Client) SetResolver(r gresolver.Resolver) *Client {
 	c.resolver = r
 	return c
 }

@@ -5,13 +5,37 @@ import (
 	"net"
 )
 
-type Server struct {
-	s *grpc.Server
+type ServerOpts struct {
+	DisallowUnknownFields bool
+	OtelName              string
 }
 
-func NewServer() *Server {
+type ServerOptsFunc func(opts *ServerOpts)
+
+func WithDisallowUnknownFields() ServerOptsFunc {
+	return func(opts *ServerOpts) {
+		opts.DisallowUnknownFields = true
+	}
+}
+
+func WithTraceName(name string) ServerOptsFunc {
+	return func(opts *ServerOpts) {
+		opts.OtelName = name
+	}
+}
+
+type Server struct {
+	s    *grpc.Server
+	opts *ServerOpts
+}
+
+func NewServer(opts ...ServerOptsFunc) *Server {
 	server := grpc.NewServer()
-	return &Server{s: server}
+	var sOpts ServerOpts
+	for _, opt := range opts {
+		opt(&sOpts)
+	}
+	return &Server{s: server, opts: &sOpts}
 }
 
 func (s *Server) Register(sd *grpc.ServiceDesc, ss any) {

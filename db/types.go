@@ -8,6 +8,6 @@ type Database interface {
 	Commit() error
 }
 
-// use dtm as distributed transaction framework
+// DTM use dtm as distributed transaction framework
 type DTM interface {
 }

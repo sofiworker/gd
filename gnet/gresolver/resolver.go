@@ -1,4 +1,4 @@
-package ghttp
+package gresolver
 
 import (
 	"context"

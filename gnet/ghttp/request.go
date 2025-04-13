@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"github.com/chuck1024/gd/v2/gnet/gresolver"
 	"github.com/valyala/fasthttp"
 	"io"
 	"mime"
@@ -32,7 +33,7 @@ type Request struct {
 	file           string
 	fileReader     io.Reader
 	fileReaderSize int
-	resolver       Resolver
+	resolver       gresolver.Resolver
 }
 
 func (r *Request) SetBearToken(token string) *Request {
@@ -112,7 +113,7 @@ func (r *Request) UploadFileByReaderWithSize(reader io.Reader, size int) *Reques
 	return r
 }
 
-func (r *Request) SetResolver(resolver Resolver) *Request {
+func (r *Request) SetResolver(resolver gresolver.Resolver) *Request {
 	r.resolver = resolver
 	return r
 }

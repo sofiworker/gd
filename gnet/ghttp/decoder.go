@@ -21,7 +21,6 @@ func init() {
 	_ = RegisterDecoder("application/json", &jsonDecoder{})
 	_ = RegisterDecoder("application/xml", &xmlDecoder{})
 	_ = RegisterDecoder("application/yaml", &yamlDecoder{})
-	_ = RegisterDecoder("application/xml", &yamlDecoder{})
 }
 
 func RegisterDecoder(name string, d Decoder) error {
