@@ -1,9 +1,5 @@
 package inject
 
-import (
-	"go.uber.org/dig"
-)
-
 type ContainerOptionFunc func(*ContainerOption)
 
 type ContainerOption struct {
@@ -33,16 +29,16 @@ func WithName(name string) ContainerOptionFunc {
 }
 
 func New(opts ...ContainerOptionFunc) *Container {
-	c := &Container{root: &Module{Name: "root", digContainer: dig.New(dig.RecoverFromPanics())}}
+	c := &Container{root: &Module{Name: "root"}}
 
-	o := &ContainerOption{
-		injectTag: "gd",
-	}
-	for _, opt := range opts {
-		opt(o)
-	}
-
-	c.opts = o
+	//o := &ContainerOption{
+	//	injectTag: "gd",
+	//}
+	//for _, opt := range opts {
+	//	opt(o)
+	//}
+	//
+	//c.opts = o
 
 	return c
 }
@@ -55,13 +51,14 @@ func (c *Container) Module(name string, opts ...ModuleOptionFunc) *Module {
 		opt(o)
 	}
 	return &Module{
-		Name:         name,
-		parent:       c.root,
-		digContainer: dig.New(dig.RecoverFromPanics()),
-		opts:         o,
+		Name:   name,
+		parent: c.root,
+		//digContainer: dig.New(dig.RecoverFromPanics()),
+		opts: o,
 	}
 }
 
 func (c *Container) Provide(f interface{}) error {
-	return c.root.Provide(f)
+	//return c.root.Provide(f)
+	return nil
 }
