@@ -2,7 +2,7 @@ package inject
 
 import (
 	"fmt"
-	"github.com/chuck1024/gd/v2/reflectx"
+	"github.com/chuck1024/gd/v2/kit/reflectx"
 	"go.uber.org/dig"
 	"reflect"
 	"sync"

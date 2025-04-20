@@ -8,7 +8,7 @@ import (
 
 func NewOptions(opts ...Option) Options {
 	options := Options{
-		Logger: logger.DefaultLogger,
+		//Logger: logger.DefaultLogger,
 	}
 
 	for _, o := range opts {
