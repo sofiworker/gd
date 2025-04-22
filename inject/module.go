@@ -4,6 +4,8 @@ import (
 	"sync"
 )
 
+type ProvideOption func()
+
 type ModuleOption struct {
 	injectTag string
 }
@@ -12,11 +14,12 @@ type ModuleOptionFunc func(opts *ModuleOption)
 
 type Module struct {
 	Name        string
-	parent      *Module
+	Parent      *Module
 	opts        *ModuleOption
 	locker      *sync.RWMutex
 	definitions map[string]*BeanDefinition
 	dag         *Dependencies
+	modules     []*Module
 }
 
 func NewModule(name string, opts ...ModuleOptionFunc) *Module {
@@ -28,7 +31,7 @@ func NewModule(name string, opts ...ModuleOptionFunc) *Module {
 	}
 	return &Module{
 		Name:        name,
-		parent:      nil,
+		Parent:      nil,
 		opts:        o,
 		locker:      &sync.RWMutex{},
 		definitions: make(map[string]*BeanDefinition),
@@ -48,10 +51,6 @@ func (m *Module) Provide(name string, newer interface{}, opts ...ProvideOption) 
 	m.definitions[name] = def
 	m.dag.Add(name, def)
 	return nil
-}
-
-func (m *Module) init() {
-
 }
 
 //func (m *Module) Provide(f interface{}, opts ...ProvideOption) error {

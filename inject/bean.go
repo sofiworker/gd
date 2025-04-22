@@ -10,6 +10,6 @@ const (
 
 type BeanDefinition struct {
 	Name  string
-	New   func() interface{}
+	New   interface{}
 	Scope Scope
 }
