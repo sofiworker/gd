@@ -54,6 +54,7 @@ type RedisConfig struct {
 	WriteTimeoutMs int64
 	Password       string
 	DbNumber       int
+	Username       string
 }
 
 type RedisPool struct {
@@ -236,6 +237,7 @@ func (p *RedisPoolClient) initRedis(f *ini.File, pn string) error {
 	r := f.Section(fmt.Sprintf("%s.%s", "Redis", pn))
 	addr := r.Key("addr").String()
 	password := r.Key("password").String()
+	username := r.Key("username").String()
 	maxActive, _ := r.Key("maxActive").Int()
 	maxIdle, _ := r.Key("maxIdle").Int()
 	retry, _ := r.Key("retry").Int()
@@ -257,6 +259,7 @@ func (p *RedisPoolClient) initRedis(f *ini.File, pn string) error {
 		WriteTimeoutMs: writeTimeout,
 		Password:       password,
 		DbNumber:       dbNumber,
+		Username:       username,
 	})
 
 	if err != nil {

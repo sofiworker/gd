@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"github.com/chuck1024/gd/dlog"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-gonic/gin/binding"
 	"net/http"
 	"time"
 )
@@ -21,16 +22,17 @@ type HttpServer struct {
 	server *http.Server
 	g      *gin.Engine
 
-	GinLog                    bool           `inject:"httpServerGinLog" canNil:"true"`
-	UseHttps                  bool           `inject:"httpServerUseHttps" canNil:"true"`
-	HttpsCertFile             string         `inject:"httpServerHttpsCertFile" canNil:"true"`
-	HttpsKeyFile              string         `inject:"httpServerHttpsKeyFile" canNil:"true"`
-	HttpServerShutdownTimeout int64          `inject:"httpServerShutdownTimeout" canNil:"true"`
-	HttpServerReadTimeout     int64          `inject:"httpServerReadTimeout" canNil:"true"`
-	HttpServerWriteTimeout    int64          `inject:"httpServerWriteTimeout" canNil:"true"`
-	HttpServerRunAddr         string         `inject:"httpServerRunAddr" canNil:"true"`
-	HttpServerRunPort         int            `inject:"httpServerRunPort"`
-	HttpServerInit            HttpServerInit `inject:"httpServerInit"`
+	GinLog                           bool           `inject:"httpServerGinLog" canNil:"true"`
+	UseHttps                         bool           `inject:"httpServerUseHttps" canNil:"true"`
+	HttpsCertFile                    string         `inject:"httpServerHttpsCertFile" canNil:"true"`
+	HttpsKeyFile                     string         `inject:"httpServerHttpsKeyFile" canNil:"true"`
+	HttpServerShutdownTimeout        int64          `inject:"httpServerShutdownTimeout" canNil:"true"`
+	HttpServerReadTimeout            int64          `inject:"httpServerReadTimeout" canNil:"true"`
+	HttpServerWriteTimeout           int64          `inject:"httpServerWriteTimeout" canNil:"true"`
+	HttpServerRunAddr                string         `inject:"httpServerRunAddr" canNil:"true"`
+	HttpServerRunPort                int            `inject:"httpServerRunPort"`
+	HttpServerInit                   HttpServerInit `inject:"httpServerInit"`
+	JsonDecoderDisallowUnknownFields bool           `inject:"httpServerJsonDecoderDisallowUnknownFields"`
 
 	HandlerMap map[string]interface{}
 }
@@ -139,6 +141,11 @@ func (h *HttpServer) initGin() error {
 		g.Use(gin.Recovery())
 	} else {
 		g = gin.Default()
+	}
+
+	if h.JsonDecoderDisallowUnknownFields {
+		binding.EnableDecoderDisallowUnknownFields = true
+		dlog.Info("http server enable json decoder disallow unknown fields [true]!")
 	}
 
 	err := h.HttpServerInit(g)

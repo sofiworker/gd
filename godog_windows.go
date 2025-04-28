@@ -156,6 +156,8 @@ func (e *Engine) Run() error {
 			pc.SetRunPort(httpPort)
 		}
 	}
+	disallowUnknownFields := Config("Server", "jsonDecoderDisallowUnknownFields").MustBool(false)
+	inject.RegisterOrFail("httpServerJsonDecoderDisallowUnknownFields", disallowUnknownFields)
 
 	// grpc server
 	grpcPort := Config("Server", "grpcPort").MustInt()
