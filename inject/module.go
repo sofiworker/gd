@@ -16,27 +16,31 @@ type Module struct {
 	Name        string
 	Parent      *Module
 	opts        *ModuleOption
-	locker      *sync.RWMutex
+	locker      sync.RWMutex
 	definitions map[string]*BeanDefinition
 	dag         *Dependencies
 	modules     []*Module
 }
 
-func NewModule(name string, opts ...ModuleOptionFunc) *Module {
-	o := &ModuleOption{
-		injectTag: "gd",
-	}
-	for _, opt := range opts {
-		opt(o)
-	}
-	return &Module{
-		Name:        name,
-		Parent:      nil,
-		opts:        o,
-		locker:      &sync.RWMutex{},
-		definitions: make(map[string]*BeanDefinition),
-		dag:         NewDependencies(),
-	}
+//func NewModule(name string, opts ...ModuleOptionFunc) *Module {
+//	o := &ModuleOption{
+//		injectTag: "gd",
+//	}
+//	for _, opt := range opts {
+//		opt(o)
+//	}
+//	return &Module{
+//		Name:        name,
+//		Parent:      nil,
+//		opts:        o,
+//		locker:      &sync.RWMutex{},
+//		definitions: make(map[string]*BeanDefinition),
+//		dag:         NewDependencies(),
+//	}
+//}
+
+func (m *Module) SubModule(name string, opts ...ModuleOptionFunc) *Module {
+	return &Module{}
 }
 
 func (m *Module) Provide(name string, newer interface{}, opts ...ProvideOption) error {
@@ -51,6 +55,17 @@ func (m *Module) Provide(name string, newer interface{}, opts ...ProvideOption) 
 	m.definitions[name] = def
 	m.dag.Add(name, def)
 	return nil
+}
+
+func (m *Module) ProvideWithName(name string, newer interface{}, opts ...ProvideOption) error {
+	return nil
+}
+
+func (m *Module) Invoke() error {
+	return nil
+}
+
+func (m *Module) MustInvoke() {
 }
 
 //func (m *Module) Provide(f interface{}, opts ...ProvideOption) error {
